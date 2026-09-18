@@ -1,4 +1,6 @@
  import "./style.css"; 
+import { fetchBooks } from './api/bookApi.js';
+
 
 // 전역 변수
 const API_BASE_URL = 'http://localhost:8080';
@@ -13,6 +15,10 @@ const submitButton = bookForm.querySelector('button[type="submit"]');
 document.addEventListener('DOMContentLoaded', function() {
     console.log('페이지 로드 완료');
     loadBooks();
+
+    fetchBooks()
+        .then(books => console.log('fetchBooks 테스트:', books))
+        .catch(error => console.error('fetchBooks 테스트 실패:', error));
 });
 
 // 폼 제출 이벤트 핸들러
