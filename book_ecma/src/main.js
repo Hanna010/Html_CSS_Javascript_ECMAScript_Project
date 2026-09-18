@@ -139,21 +139,24 @@ function isValidUrl(string) {
 }
 
 // 도서 목록 로드 함수
-function loadBooks() {
-    fetch(`${API_BASE_URL}/api/books`)
-        .then(response => {
-            if (!response.ok) {
-                throw new Error('도서 목록을 불러오는데 실패했습니다.');
-            }
-            return response.json();
-        })
-        .then(books => {
-            renderBookTable(books);
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            alert('도서 목록을 불러오는데 실패했습니다.');
-        });
+async function loadBooks() {
+    loadingMessage.style.display = "block";
+
+    // try 안에서 오류가 나면 곧바로 catch 로 넘어간다.
+    // finally 는 성공하든 실패하든 마지막에 반드시 실행된다.
+    try {
+        // await 은 서버 응답이 올 때까지 기다린다.
+        // form10.js 의 fetch().then().then() 사슬이 두 줄이 되었다.
+        const books = await fetchBooks();
+        renderBookTable(books);
+    } catch (error) {
+        console.error("Error:", error);
+        showError(error.message);    // bookApi 가 던진 메시지
+        renderTableError();
+    } finally {
+        // 여기에 두면 성공 경로와 실패 경로에 두 번 적지 않아도 된다.
+        loadingMessage.style.display = "none";
+    }
 }
 
 // 도서 테이블 렌더링
