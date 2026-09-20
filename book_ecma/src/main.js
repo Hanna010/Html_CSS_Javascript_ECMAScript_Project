@@ -1,146 +1,86 @@
- import "./style.css"; 
-import { fetchBooks } from './api/bookApi.js';
+/* ---------------------------------------------------------
+   main.js — 앱을 조립하는 곳
+   form10.js 의 이벤트 연결과 흐름 제어만 남았습니다.
+
+   여기서 하는 일은 세 가지뿐입니다.
+     (1) 필요한 함수들을 다른 파일에서 가져오고
+     (2) 어떤 일이 일어났을 때 무엇을 부를지 이어 주고
+     (3) 수정 중인지 아닌지 같은 상태를 기억한다
+
+   실제 일은 api/, lib/, ui/ 가 나눠서 합니다.
+   --------------------------------------------------------- */
+
+// CSS 도 import 한다. Vite 가 이 줄을 보고 스타일을 끼워 넣는다.
+import "./style.css";
+
+// 서버와 대화하는 함수들
+import {
+    fetchBooks,
+    fetchBook,
+    createBook,
+    updateBook,
+    deleteBook,
+} from "./api/bookApi.js";
+
+// 입력값 검사
+import { validateBook } from "./lib/validation.js";
+
+// 폼 다루기
+import {
+    bookForm,
+    cancelButton,
+    collectBookData,
+    fillForm,
+    setEditMode,
+    resetForm,
+    scrollToForm,
+} from "./ui/bookForm.js";
+
+// 표 그리기
+import {
+    renderBookTable,
+    renderTableError,
+    bookTableBody,
+} from "./ui/bookTable.js";
+
+// 상세 보기 글 만들기
+import { formatBookDetail } from "./ui/bookDetail.js";
+
+// 메시지 표시
+import {
+    showError,
+    showSuccess,
+    clearMessages,
+    setLoading,
+} from "./ui/message.js";
+
+// 지금 어느 모드로 도는지 (TEST / PROD)
+import { APP_MODE } from "./config.js";
+
+// 이 파일이 기억하는 유일한 상태다.
+// 값이 있으면 수정 모드, null 이면 등록 모드다.
+let editingBookId = null;
 
 
-// 전역 변수
-const API_BASE_URL = 'http://localhost:8080';
-let editingBookId = null; // 현재 수정 중인 도서 ID
+/* ── 모드 표시 ──────────────────────────────────────────── */
 
-// DOM 요소 참조
-const bookForm = document.getElementById('bookForm');
-const bookTableBody = document.getElementById('bookTableBody');
-const submitButton = bookForm.querySelector('button[type="submit"]');
+// 제목 옆에 TEST 또는 PROD 를 적는다.
+// 값은 .env 파일에서 오고, Vite 가 빌드할 때 넣어 준다.
+const appModeBadge = document.getElementById("appMode");
+appModeBadge.textContent = APP_MODE;
 
-// 초기화
-document.addEventListener('DOMContentLoaded', function() {
-    console.log('페이지 로드 완료');
-    loadBooks();
-
-    fetchBooks()
-        .then(books => console.log('fetchBooks 테스트:', books))
-        .catch(error => console.error('fetchBooks 테스트 실패:', error));
-});
-
-// 폼 제출 이벤트 핸들러
-bookForm.addEventListener('submit', function(e) {
-    e.preventDefault();
-
-    // 폼 데이터 수집
-    const formData = new FormData(bookForm);
-    const bookData = {
-        title: formData.get('title').trim(),
-        author: formData.get('author').trim(),
-        isbn: formData.get('isbn').trim(),
-        price: formData.get('price') ? parseInt(formData.get('price')) : null,
-        publishDate: formData.get('publishDate') || null,
-        bookDetail: {
-            description: formData.get('description').trim(),
-            language: formData.get('language').trim(),
-            pageCount: formData.get('pageCount') ? parseInt(formData.get('pageCount')) : null,
-            publisher: formData.get('publisher').trim(),
-            coverImageUrl: formData.get('coverImageUrl').trim(),
-            edition: formData.get('edition').trim()
-        }
-    };
-
-    // 유효성 검사
-    if (!validateBook(bookData)) {
-        return;
-    }
-
-    // 수정 모드인지 확인
-    if (editingBookId) {
-        updateBook(editingBookId, bookData);
-    } else {
-        createBook(bookData);
-    }
-});
-
-// 도서 생성 함수
-function createBook(bookData) {
-    fetch(`${API_BASE_URL}/api/books`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(bookData)
-    })
-    .then(response => {
-        if (!response.ok) {
-            throw new Error('도서 등록에 실패했습니다.');
-        }
-        return response.json();
-    })
-    .then(result => {
-        alert('도서가 성공적으로 등록되었습니다.');
-        bookForm.reset();
-        loadBooks(); // 목록 새로고침
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        alert('도서 등록에 실패했습니다.');
-    });
+// 모드에 따라 색을 다르게 한다. classList.add 로 클래스를 하나 더 붙인다.
+if (APP_MODE === "PROD") {
+    appModeBadge.classList.add("prod");
+} else {
+    appModeBadge.classList.add("test");
 }
 
-// 도서 데이터 유효성 검사
-function validateBook(book) {
-    // 필수 필드 검사
-    if (!book.title) {
-        alert('제목을 입력해주세요.');
-        return false;
-    }
 
-    if (!book.author) {
-        alert('저자를 입력해주세요.');
-        return false;
-    }
+/* ── 목록 불러오기 ──────────────────────────────────────── */
 
-    if (!book.isbn) {
-        alert('ISBN을 입력해주세요.');
-        return false;
-    }
-
-    // ISBN 형식 검사 (기본적인 영숫자 조합)
-    const isbnPattern = /^[0-9X-]+$/;
-    if (!isbnPattern.test(book.isbn)) {
-        alert('올바른 ISBN 형식이 아닙니다. (숫자와 X, -만 허용)');
-        return false;
-    }
-
-    // 가격 유효성 검사
-    if (book.price !== null && book.price < 0) {
-        alert('가격은 0 이상이어야 합니다.');
-        return false;
-    }
-
-    // 페이지 수 유효성 검사
-    if (book.bookDetail.pageCount !== null && book.bookDetail.pageCount < 0) {
-        alert('페이지 수는 0 이상이어야 합니다.');
-        return false;
-    }
-
-    // URL 형식 검사 (입력된 경우에만)
-    if (book.bookDetail.coverImageUrl && !isValidUrl(book.bookDetail.coverImageUrl)) {
-        alert('올바른 이미지 URL 형식이 아닙니다.');
-        return false;
-    }
-
-    return true;
-}
-
-// URL 유효성 검사
-function isValidUrl(string) {
-    try {
-        new URL(string);
-        return true;
-    } catch (_) {
-        return false;
-    }
-}
-
-// 도서 목록 로드 함수
 async function loadBooks() {
-    loadingMessage.style.display = "block";
+    setLoading(true);
 
     // try 안에서 오류가 나면 곧바로 catch 로 넘어간다.
     // finally 는 성공하든 실패하든 마지막에 반드시 실행된다.
@@ -155,163 +95,149 @@ async function loadBooks() {
         renderTableError();
     } finally {
         // 여기에 두면 성공 경로와 실패 경로에 두 번 적지 않아도 된다.
-        loadingMessage.style.display = "none";
+        setLoading(false);
     }
 }
 
-// 도서 테이블 렌더링
-function renderBookTable(books) {
-    bookTableBody.innerHTML = '';
 
-    books.forEach(book => {
-        const row = document.createElement('tr');
+/* ── 등록 / 수정 — 폼 제출 ─────────────────────────────── */
 
-        const formattedPrice = book.price ? `₩${book.price.toLocaleString()}` : '-';
-        const formattedDate = book.publishDate || '-';
-        const publisher = book.bookDetail ? book.bookDetail.publisher || '-' : '-';
+// 핸들러 안에서 await 을 쓰려면 함수에 async 를 붙여야 한다.
+bookForm.addEventListener("submit", async (event) => {
+    event.preventDefault();          // 폼 제출로 페이지가 새로고침되는 것을 막는다
+    clearMessages();
 
-        row.innerHTML = `
-            <td>${book.title}</td>
-            <td>${book.author}</td>
-            <td>${book.isbn}</td>
-            <td>${formattedPrice}</td>
-            <td>${formattedDate}</td>
-            <td>${publisher}</td>
-            <td>
-                <button class="edit-btn" onclick="editBook(${book.id})">수정</button>
-                <button class="delete-btn" onclick="deleteBook(${book.id})">삭제</button>
-                <button class="detail-btn" onclick="showBookDetail(${book.id})">상세</button>
-            </td>
-        `;
+    const bookData = collectBookData();
 
-        bookTableBody.appendChild(row);
-    });
-}
-
-// 도서 삭제 함수
-function deleteBook(bookId) {
-    if (!confirm('정말로 이 도서를 삭제하시겠습니까?')) {
+    // validateBook 은 문제가 있으면 메시지를, 없으면 null 을 돌려준다.
+    // 문제가 있으면 여기서 끝낸다(early return).
+    const errorMessage = validateBook(bookData);
+    if (errorMessage) {
+        showError(errorMessage);
         return;
     }
 
-    fetch(`${API_BASE_URL}/api/books/${bookId}`, {
-        method: 'DELETE'
-    })
-    .then(response => {
-        if (!response.ok) {
-            throw new Error('도서 삭제에 실패했습니다.');
+    try {
+        // editingBookId 에 값이 있으면 수정, 없으면 등록이다.
+        if (editingBookId) {
+            await updateBook(editingBookId, bookData);
+            showSuccess("도서 정보가 성공적으로 수정되었습니다.");
+        } else {
+            await createBook(bookData);
+            showSuccess("도서가 성공적으로 등록되었습니다.");
         }
-        alert('도서가 성공적으로 삭제되었습니다.');
-        loadBooks(); // 목록 새로고침
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        alert('도서 삭제에 실패했습니다.');
-    });
-}
 
-// 도서 수정 함수
-function editBook(bookId) {
-    fetch(`${API_BASE_URL}/api/books/${bookId}`)
-        .then(response => {
-            if (!response.ok) {
-                throw new Error('도서 정보를 불러오는데 실패했습니다.');
-            }
-            return response.json();
-        })
-        .then(book => {
-            // 폼에 기본 도서 정보 채우기
-            bookForm.title.value = book.title;
-            bookForm.author.value = book.author;
-            bookForm.isbn.value = book.isbn;
-            bookForm.price.value = book.price || '';
-            bookForm.publishDate.value = book.publishDate || '';
-
-            // 폼에 상세 정보 채우기
-            if (book.bookDetail) {
-                bookForm.description.value = book.bookDetail.description || '';
-                bookForm.language.value = book.bookDetail.language || '';
-                bookForm.pageCount.value = book.bookDetail.pageCount || '';
-                bookForm.publisher.value = book.bookDetail.publisher || '';
-                bookForm.coverImageUrl.value = book.bookDetail.coverImageUrl || '';
-                bookForm.edition.value = book.bookDetail.edition || '';
-            }
-
-            // 수정 모드로 설정
-            editingBookId = bookId;
-            submitButton.textContent = '도서 수정';
-
-            // 폼으로 스크롤
-            bookForm.scrollIntoView({ behavior: 'smooth' });
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            alert('도서 정보를 불러오는데 실패했습니다.');
-        });
-}
-
-// 도서 업데이트 함수
-function updateBook(bookId, bookData) {
-    fetch(`${API_BASE_URL}/api/books/${bookId}`, {
-        method: 'PUT',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(bookData)
-    })
-    .then(response => {
-        if (!response.ok) {
-            throw new Error('도서 정보 수정에 실패했습니다.');
-        }
-        return response.json();
-    })
-    .then(result => {
-        alert('도서 정보가 성공적으로 수정되었습니다.');
+        editingBookId = null;
         resetForm();
-        loadBooks(); // 목록 새로고침
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        alert('도서 정보 수정에 실패했습니다.');
-    });
+        await loadBooks();            // 목록 새로고침
+    } catch (error) {
+        console.error("Error:", error);
+        showError(error.message);     // 서버가 보낸 실제 메시지
+    }
+});
+
+
+/* ── 수정 / 삭제 / 상세 — 표의 클릭을 tbody 한 곳에서 받는다 ── */
+
+/* 버튼마다 이벤트를 걸지 않는 이유는, 표를 다시 그릴 때마다
+   버튼이 새로 만들어져 매번 다시 걸어야 하기 때문이다.
+   사라지지 않는 부모인 tbody 에 한 번만 걸어 두면
+   나중에 생기는 행의 버튼도 그대로 동작한다(이벤트 위임). */
+bookTableBody.addEventListener("click", async (event) => {
+    // tbody 안에서 일어난 클릭이 전부 여기로 들어온다.
+    // 제목 칸을 눌렀는지 버튼을 눌렀는지 먼저 가려내야 한다.
+    //
+    //   event.target  이벤트를 건 tbody 가 아니라 실제로 눌린 가장 안쪽 요소
+    //   closest(...)  자기 자신부터 부모 쪽으로 올라가며 조건에 맞는 첫 요소를 찾는다
+    //                 끝까지 없으면 null 을 돌려준다
+    const button = event.target.closest("button[data-action]");
+    if (!button) return;             // 버튼이 아닌 곳을 눌렀다
+
+    // data-action="edit" 은 button.dataset.action 으로 읽는다.
+    const { action, id } = button.dataset;
+
+    // dataset 값은 언제나 문자열이다. data-id="3" 이면 "3" 이 온다.
+    // 그래서 Number() 로 숫자로 바꿔서 넘긴다.
+    if (action === "edit") {
+        await startEdit(Number(id));
+    } else if (action === "delete") {
+        await removeBook(Number(id));
+    } else if (action === "detail") {
+        await showDetail(Number(id));
+    }
+});
+
+// 수정할 도서 정보를 불러와 폼에 채우고 수정 모드로 바꾼다.
+async function startEdit(bookId) {
+    clearMessages();
+
+    try {
+        const book = await fetchBook(bookId);
+
+        fillForm(book);
+        editingBookId = bookId;         // 이제 제출하면 등록이 아니라 수정이 된다
+        setEditMode(true);
+        scrollToForm();
+    } catch (error) {
+        console.error("Error:", error);
+        showError(error.message);
+    }
 }
 
-// 도서 상세보기 함수
-function showBookDetail(bookId) {
-    fetch(`${API_BASE_URL}/api/books/${bookId}`)
-        .then(response => {
-            if (!response.ok) {
-                throw new Error('도서 정보를 불러오는데 실패했습니다.');
-            }
-            return response.json();
-        })
-        .then(book => {
-            let detailInfo = `제목: ${book.title}\n`;
-            detailInfo += `저자: ${book.author}\n`;
-            detailInfo += `ISBN: ${book.isbn}\n`;
-            detailInfo += `가격: ${book.price ? '₩' + book.price.toLocaleString() : '-'}\n`;
-            detailInfo += `출판일: ${book.publishDate || '-'}\n\n`;
+// 확인을 받은 뒤 도서를 삭제한다.
+async function removeBook(bookId) {
+    if (!confirm("정말로 이 도서를 삭제하시겠습니까?")) {
+        return;
+    }
 
-            if (book.bookDetail) {
-                detailInfo += `설명: ${book.bookDetail.description || '-'}\n`;
-                detailInfo += `언어: ${book.bookDetail.language || '-'}\n`;
-                detailInfo += `페이지 수: ${book.bookDetail.pageCount || '-'}\n`;
-                detailInfo += `출판사: ${book.bookDetail.publisher || '-'}\n`;
-                detailInfo += `에디션: ${book.bookDetail.edition || '-'}\n`;
-                detailInfo += `표지 이미지: ${book.bookDetail.coverImageUrl || '-'}`;
-            }
+    try {
+        await deleteBook(bookId);
+        showSuccess("도서가 성공적으로 삭제되었습니다.");
 
-            alert(detailInfo);
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            alert('도서 정보를 불러오는데 실패했습니다.');
-        });
+        // 수정 중이던 도서를 삭제했다면 폼도 등록 모드로 되돌린다.
+        // 이걸 빠뜨리면 없는 도서를 수정하려다 404 가 난다.
+        if (editingBookId === bookId) {
+            editingBookId = null;
+            resetForm();
+        }
+
+        await loadBooks();
+    } catch (error) {
+        console.error("Error:", error);
+        showError(error.message);
+    }
 }
 
-// 폼 초기화 함수
-function resetForm() {
-    bookForm.reset();
+/* 도서 한 권의 상세 정보를 보여 준다.
+
+   등록 · 수정 · 삭제 안내는 화면 안 메시지(#formError)로 옮겼지만,
+   상세 보기는 여러 줄을 한꺼번에 보여 주는 것이라 alert 을 그대로 둔다.
+   보여 줄 글은 formatBookDetail 이 만들고, 이 함수는 띄우기만 한다.
+   나중에 <dialog> 나 모달 창으로 바꾸더라도 고칠 곳은 이 한 줄뿐이다. */
+async function showDetail(bookId) {
+    clearMessages();
+
+    try {
+        const book = await fetchBook(bookId);
+        alert(formatBookDetail(book));
+    } catch (error) {
+        console.error("Error:", error);
+        showError(error.message);
+    }
+}
+
+
+/* ── 취소 버튼 — 수정 모드에서 빠져나온다 ──────────────── */
+
+cancelButton.addEventListener("click", () => {
     editingBookId = null;
-    submitButton.textContent = '도서 등록';
-}
+    resetForm();
+    clearMessages();
+});
+
+
+/* ── 시작 ──────────────────────────────────────────────── */
+
+// form10.js 에서는 DOMContentLoaded 안에서 불러야 했다.
+// type="module" 은 HTML 을 다 읽은 뒤 실행되므로 여기서 바로 부른다.
+loadBooks();
