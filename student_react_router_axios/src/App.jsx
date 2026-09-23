@@ -21,6 +21,8 @@ import StudentListPage from "./pages/StudentListPage.jsx";
 import StudentFormPage from "./pages/StudentFormPage.jsx";
 import NotFoundPage from "./pages/NotFoundPage.jsx";
 
+import AppMessage from "./components/AppMessage.jsx";
+
 // 지금 어느 모드로 도는지 (TEST / PROD)
 import { APP_MODE } from "./config.js";
 
@@ -66,6 +68,10 @@ function App() {
                 </nav>
             </header>
 
+
+            <AppMessage />
+
+            
             {/* Routes 안에서 주소와 맞는 Route 하나만 그려진다. */}
             <Routes>
                 <Route path="/" element={<StudentListPage />} />
