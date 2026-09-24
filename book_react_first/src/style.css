@@ -177,13 +177,6 @@ tr:hover {
     color: #666;
 }
 
-/* 폼 아래에 뜨는 오류 · 성공 메시지.
-   처음에는 감춰 두고, message.js 가 보일 때만 display 를 바꾼다. */
-.error-message {
-    font-size: 0.9em;
-    margin-top: 5px;
-    display: none;
-}
 
 .cancel-btn {
     background-color: #757575;

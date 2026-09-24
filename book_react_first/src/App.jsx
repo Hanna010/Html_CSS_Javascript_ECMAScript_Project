@@ -1,48 +1,156 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import "./style.css";
-import { fetchBooks } from "./api/bookApi";
+import { fetchBooks, fetchBook, createBook, updateBook, deleteBook } from "./api/bookApi";
+import { validateBook } from "./lib/validation";
+import { EMPTY_FORM, toRequest, toFormValues } from "./lib/bookData";
+import { APP_MODE } from "./config";
 import BookTable from "./components/BookTable";
+import BookForm from "./components/BookForm";
+import BookDetail from "./components/BookDetail";
 
 function App() {
-  const [books, setbooks] = useState([]);          // 표에 그릴 도서 목록
-  const [form, setForm] = useState({});          // 입력칸 11 개의 값
-  const [editingId, setEditingId] = useState(null);      // null 이면 등록 모드
-  const [loading, setLoading] = useState(false);         // "로딩 중..." 을 보일까
-  const [listError, setListError] = useState(null);      // 표 자리에 낼 오류 문구
-  // 메시지는 { text: "문구", type: "error" 또는 "success" } 모양으로 담는다.
-  const [message, setMessage] = useState(null);          //성공,오류 메시지
-  const [detailBook, setDetailBook] = useState(null); //상세 보기로 고른 도서 null 이면 안그린다.
+  const [books, setBooks] = useState([]);
+  const [form, setForm] = useState(EMPTY_FORM);
+  const [editingId, setEditingId] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [listError, setListError] = useState(null);
+  const [message, setMessage] = useState(null);
+  const [detailBook, setDetailBook] = useState(null);
 
-  <h1>도서 관리 시스템</h1>
+  const formRef = useRef(null);
 
+  const isEditing = editingId !== null;
 
-  useEffect(() => {
-    loadBooks();
-  }, []);
+  // 제목 옆 배지 — APP_MODE는 "TEST" 또는 "PROD" 문자열 그대로 온다
+  const isProd = APP_MODE === "PROD";
+  const modeClass = isProd ? "app-mode prod" : "app-mode";
 
   async function loadBooks() {
     setLoading(true);
     setListError(null);
 
     try {
-      const books = await fetchBooks();  // bookApi.js — 그대로
-      console.log("도서 목록:", books); // 이 줄이 있어야 함
-      setbooks(books);        // ② renderBookTable(books) → setBooks(books)
+      const books = await fetchBooks();
+      setBooks(books);
     } catch (error) {
-      setListError(error.message);  // ③ renderTableError() → setListError(문구)
+      setListError(error.message);
     } finally {
       setLoading(false);
     }
   }
 
-  // 과제 9·10에서 실제로 채울 자리 — 지금은 빈 함수로 오류만 막아둔다
-  function handleEdit() {}
-  function handleDelete() {}
-  function handleDetail() {}
+  useEffect(() => {
+    loadBooks();
+  }, []);
+
+  useEffect(() => {
+    if (!message || message.type !== "success") return;
+
+    const timer = setTimeout(() => {
+      setMessage(null);
+    }, 3000);
+
+    return () => clearTimeout(timer);
+  }, [message]);
+
+  function handleChange(event) {
+    const { name, value } = event.target;
+    setForm({ ...form, [name]: value });
+  }
+
+  function resetForm() {
+    setForm(EMPTY_FORM);
+    setEditingId(null);
+  }
+
+  function handleCancel() {
+    resetForm();
+  }
+
+  async function handleSubmit(event) {
+    event.preventDefault();
+    setMessage(null);
+
+    const bookData = toRequest(form);
+    const errorText = validateBook(bookData);
+
+    if (errorText) {
+      setMessage({ text: errorText, type: "error" });
+      return;
+    }
+
+    try {
+      if (editingId === null) {
+        await createBook(bookData);
+        setMessage({ text: "등록되었습니다.", type: "success" });
+      } else {
+        await updateBook(editingId, bookData);
+        setMessage({ text: "수정되었습니다.", type: "success" });
+      }
+
+      resetForm();
+      await loadBooks();
+    } catch (error) {
+      setMessage({ text: error.message, type: "error" });
+    }
+  }
+
+  async function handleEdit(id) {
+    try {
+      const book = await fetchBook(id);
+      setForm(toFormValues(book));
+      setEditingId(id);
+      formRef.current?.scrollIntoView({ behavior: "smooth" });
+    } catch (error) {
+      setMessage({ text: error.message, type: "error" });
+    }
+  }
+
+  async function handleDelete(id) {
+    if (!confirm("정말 삭제하시겠습니까?")) return;
+
+    try {
+      await deleteBook(id);
+      setMessage({ text: "삭제되었습니다.", type: "success" });
+
+      if (editingId === id) {
+        resetForm();
+      }
+
+      await loadBooks();
+    } catch (error) {
+      setMessage({ text: error.message, type: "error" });
+    }
+  }
+
+  async function handleDetail(id) {
+    try {
+      const book = await fetchBook(id);
+      setDetailBook(book);
+    } catch (error) {
+      setMessage({ text: error.message, type: "error" });
+    }
+  }
+
+  function handleCloseDetail() {
+    setDetailBook(null);
+  }
 
   return (
     <>
-      <h1>도서 관리 시스템</h1>
+      <h1>
+        도서 관리 시스템 <span className={modeClass}>{APP_MODE}</span>
+      </h1>
+
+      <BookForm
+        form={form}
+        isEditing={isEditing}
+        message={message}
+        onChange={handleChange}
+        onSubmit={handleSubmit}
+        onCancel={handleCancel}
+        containerRef={formRef}
+      />
 
       <BookTable
         books={books}
@@ -52,9 +160,10 @@ function App() {
         onDelete={handleDelete}
         onDetail={handleDetail}
       />
+
+      <BookDetail book={detailBook} onClose={handleCloseDetail} />
     </>
   );
-
 }
 
 export default App;
